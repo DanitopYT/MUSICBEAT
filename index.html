@@ -1,0 +1,211 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Music Like</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; text-align: center; overflow: hidden; }
+        
+        /* EFECTO GLITCH (LIFETIME 0.5s) */
+        .glitch-fx { animation: shake 0.1s infinite; filter: contrast(180%) hue-rotate(90deg) brightness(1.3); }
+        @keyframes shake {
+            0% { transform: translate(4px, -4px); }
+            50% { transform: translate(-4px, 4px) skewX(5deg); }
+            100% { transform: translate(0); }
+        }
+
+        .bam-mode { display: grid !important; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; height: 100vh; }
+
+        #setup, #start-screen, #win-screen { padding: 40px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; box-sizing: border-box; }
+        .btn-ui { padding: 20px; background: #ff416c; border: none; border-radius: 15px; color: white; font-weight: bold; font-size: 18px; width: 85%; cursor: pointer; margin: 10px 0; }
+        select { padding: 10px; border-radius: 8px; background: #222; color: white; border: 1px solid #ff416c; margin-bottom: 20px; }
+        
+        #main-game { width: 100%; height: 100%; position: relative; }
+        #track { position: relative; width: 140px; height: 350px; background: #111; margin: 15px auto; border: 2px solid #333; border-radius: 20px; overflow: hidden; }
+        .note { position: absolute; width: 50px; height: 50px; background: #ff416c; border-radius: 50%; left: 45px; display: flex; align-items: center; justify-content: center; font-size: 25px; box-shadow: 0 0 15px #ff416c; }
+        #hit-line { position: absolute; bottom: 50px; width: 100%; height: 4px; background: cyan; box-shadow: 0 0 10px cyan; }
+        #like-btn { width: 90px; height: 90px; background: #ff416c; border: none; border-radius: 50%; font-size: 45px; color: white; cursor: pointer; box-shadow: 0 0 20px rgba(255, 65, 108, 0.5); -webkit-tap-highlight-color: transparent; }
+        #score { font-size: 35px; color: yellow; margin: 5px; font-weight: bold; }
+        
+        #win-screen { background: rgba(0, 230, 118, 0.1); animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .final-score { font-size: 50px; color: #00e676; text-shadow: 0 0 20px #00e676; margin: 20px 0; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="setup">
+        <h1 id="txt-title">Music Like ❤️</h1>
+        <select id="lang-select" onchange="changeLang()">
+            <option value="en">English (Default)</option>
+            <option value="es">Español</option>
+        </select>
+        <p id="txt-step1">1. Choose your music (MP3):</p>
+        <button class="btn-ui" onclick="document.getElementById('audio-input').click()" id="btn-choose">📁 CHOOSE MP3</button>
+        <input type="file" id="audio-input" accept="audio/*" style="display:none">
+    </div>
+
+    <div id="start-screen" class="hidden">
+        <h2 id="txt-ready">Ready?</h2>
+        <button class="btn-ui" style="background: #00e676; height: 100px;" onclick="startGame()" id="btn-play">▶ PLAY</button>
+    </div>
+
+    <div id="game-canvas" class="hidden">
+        <div id="main-game">
+            <div id="score">0</div>
+            <div id="track"><div id="hit-line"></div></div>
+            <button id="like-btn" onpointerdown="hit()">❤️</button>
+        </div>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <h1 id="txt-win" style="font-size: 60px;">YOU WIN!</h1>
+        <p id="txt-final-msg">Your Score:</p>
+        <div id="final-score-val" class="final-score">0</div>
+        <button class="btn-ui" onclick="resetToMenu()" id="btn-restart">RESTART</button>
+    </div>
+
+    <script>
+        let audio = new Audio();
+        let audioCtx, analyser, dataArray, source;
+        let notes = [];
+        let score = 0;
+        let isRunning = false;
+        let lastLowEnergy = 0;
+        let glitchTimeout;
+
+        const texts = {
+            en: { title: "Music Like ❤️", step1: "1. Choose your music (MP3):", choose: "📁 CHOOSE MP3", ready: "Ready?", play: "▶ PLAY", win: "YOU WIN!", msg: "Your Score:", restart: "RESTART" },
+            es: { title: "Music Like ❤️", step1: "1. Elige tu música (MP3):", choose: "📁 ELEGIR MP3", ready: "¿Listo?", play: "▶ JUGAR", win: "¡GANASTE!", msg: "Tu Puntuación:", restart: "REINICIAR" }
+        };
+
+        function changeLang() {
+            const l = document.getElementById('lang-select').value;
+            document.getElementById('txt-title').innerText = texts[l].title;
+            document.getElementById('txt-step1').innerText = texts[l].step1;
+            document.getElementById('btn-choose').innerText = texts[l].choose;
+            document.getElementById('txt-ready').innerText = texts[l].ready;
+            document.getElementById('btn-play').innerText = texts[l].play;
+            document.getElementById('txt-win').innerText = texts[l].win;
+            document.getElementById('txt-final-msg').innerText = texts[l].msg;
+            document.getElementById('btn-restart').innerText = texts[l].restart;
+        }
+
+        document.getElementById('audio-input').onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                audio.src = URL.createObjectURL(file);
+                document.getElementById('setup').classList.add('hidden');
+                document.getElementById('start-screen').classList.remove('hidden');
+            }
+        };
+
+        audio.onended = () => showWinScreen();
+
+        function startGame() {
+            if(!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                source = audioCtx.createMediaElementSource(audio);
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+            }
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-canvas').classList.remove('hidden');
+            audio.play();
+            isRunning = true;
+            gameLoop();
+        }
+
+        function showWinScreen() {
+            isRunning = false;
+            document.getElementById('game-canvas').classList.add('hidden');
+            document.getElementById('win-screen').classList.remove('hidden');
+            document.getElementById('final-score-val').innerText = score;
+        }
+
+        function resetToMenu() {
+            // Limpieza manual para evitar pantalla blanca
+            score = 0;
+            document.getElementById('score').innerText = "0";
+            notes.forEach(n => n.el.remove());
+            notes = [];
+            audio.pause();
+            audio.currentTime = 0;
+            document.getElementById('win-screen').classList.add('hidden');
+            document.getElementById('setup').classList.remove('hidden');
+            document.getElementById('audio-input').value = ""; // Reset file input
+        }
+
+        function gameLoop() {
+            if(!isRunning) return;
+            analyser.getByteFrequencyData(dataArray);
+            let low = 0; for(let i=0; i<5; i++) low += dataArray[i]; low /= 5;
+            let high = 0; for(let i=15; i<30; i++) high += dataArray[i]; high /= 15;
+
+            // GLITCH CON 0.5s LIFETIME
+            if (high > 140) {
+                clearTimeout(glitchTimeout);
+                document.body.classList.add('glitch-fx');
+                glitchTimeout = setTimeout(() => document.body.classList.remove('glitch-fx'), 500);
+            }
+
+            if (low - lastLowEnergy > 70 && low > 180) {
+                triggerBam();
+                spawnNote();
+            }
+            lastLowEnergy = low;
+            if (low > 195 && Math.random() > 0.9) { spawnNote(); }
+
+            for(let i = notes.length - 1; i >= 0; i--) {
+                notes[i].y += 5;
+                notes[i].el.style.top = notes[i].y + 'px';
+                if(notes[i].y > 350) { notes[i].el.remove(); notes.splice(i, 1); }
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function triggerBam() {
+            const canvas = document.getElementById('game-canvas');
+            if (canvas.classList.contains('bam-mode')) return;
+            const original = document.getElementById('main-game');
+            canvas.classList.add('bam-mode');
+            for(let i=0; i<3; i++) {
+                let clone = original.cloneNode(true);
+                clone.id = "";
+                canvas.appendChild(clone);
+            }
+            setTimeout(() => {
+                canvas.classList.remove('bam-mode');
+                while (canvas.children.length > 1) { canvas.lastChild.remove(); }
+            }, 1000);
+        }
+
+        function spawnNote() {
+            const n = document.createElement('div');
+            n.className = 'note';
+            n.innerHTML = '❤️';
+            n.style.top = '-60px';
+            document.getElementById('track').appendChild(n);
+            notes.push({ el: n, y: -60 });
+        }
+
+        function hit() {
+            if(notes.length === 0) return;
+            const f = notes[0];
+            if(f.y > 250 && f.y < 310) {
+                score += 100;
+                document.getElementById('score').innerText = score;
+                f.el.style.background = "cyan";
+                setTimeout(() => f.el.remove(), 50);
+                notes.shift();
+            }
+        }
+    </script>
+</body>
+</html>
